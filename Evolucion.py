@@ -11,18 +11,14 @@ Definición del cromosoma
 Las compuertas not siempre son de 1 entrada, así que los valores de las not
 mantiene constante y no se toma en cuenta para el cromosoma
 
-cromosoma = (x1, x2, x3)
-Alelo para x1 y x2: valores enteros restringidos a [1, 2, 3]
-Alelo para x3: valores enteros restringidos a [0, 1]
+cromosoma = (x1, x2, x3, x4, x5, x6, x7, x8, x9, x10)
+Alelo para x1, x2, ..., x9: valores enteros restringidos a [1, 2, 3]
+Alelo para x10: valores enteros restringidos a [0, 1]
 
 Donde:
-x1: Está relacionado a las compuertas AND
--> La cantidad de entradas de la AND se obtiene de la forma 2^(x1)
+x1, x2, ..., x9: Está relacionado con las compuertas
 
-x2: Está relacionado a las compuertas OR
--> La cantidad de entradas de la OR se obtiene de la forma 2^(x2)
-
-x3: Está relacionado al modelo (fenotipo)
+x10: Está relacionado al modelo (fenotipo)
 -> 0: Lógica de min-términos
 -> 1: Lógica de max-términos
 '''
@@ -80,11 +76,11 @@ los integrados utilizados, se consideró una alimentación de 5Vdd
 
 class MyProblem(Problem):
     def __init__(self):
-        super().__init__(n_var=3, # Número de variables a optimizar
+        super().__init__(n_var=10, # Número de variables a optimizar
                          n_obj=3, # Número de funciones objetivas
                          n_constr=0,# Número de limitaciones
-                         xl=np.array([1, 1, 0]), # Valor mínimo del alelos
-                         xu=np.array([3, 3, 1]), # Valor máximo del alelo
+                         xl=np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 0]), # Valor mínimo del alelos
+                         xu=np.array([3, 3, 3, 3, 3, 3, 3, 3, 3, 1]), # Valor máximo del alelo
                          type_var=int, # Trabajar con números enteros
                          elementwise_evaluation=True) # Evaluar elemento por elemento
 
@@ -112,19 +108,35 @@ class MyProblem(Problem):
                 tot += temp
                 # Se suman las salidas de los integrados más las salidas que faltan
                 temp += mod
-        if inp == 5: # Si son 5 entradas se trata de la capa intermedia
-            tot *= 8
         return tot, capas
 
     # Función para la evaluación del algoritmo
     def _evaluate(self, x, out, *args, **kwargs):
+        totAND = []
+        totOR = []
+        capAND = []
+        capOR = []
+        if x[9] == 0: # Se trabaja con min-términos
+            for i in range(len(x)-1):
+                if i == 8:
+                    temp = self._cantCircuitos(8, 2 ** x[i])
+                    totOR.append(temp[0])
+                    capOR.append(temp[1])
+                else:
+                    temp = self._cantCircuitos(5, 2 ** x[i])
+                    totAND.append(temp[0])
+                    capAND.append(temp[1])
 
-        if x[2] == 0: # Se trabaja con min-términos
-            AND = self._cantCircuitos(5, 2 ** x[0])
-            OR = self._cantCircuitos(8, 2 ** x[1])
-        elif x[2] == 1: # Se trabaja con max-términos
-            AND = self._cantCircuitos(8, 2 ** x[0])
-            OR = self._cantCircuitos(5, 2 ** x[1])
+        elif x[9] == 1: # Se trabaja con max-términos
+            for i in range(len(x)-1):
+                if i == 8:
+                    temp = self._cantCircuitos(8, 2 ** x[i])
+                    totAND.append(temp[0])
+                    capAND.append(temp[1])
+                else:
+                    temp = self._cantCircuitos(5, 2 ** x[i])
+                    totOR.append(temp[0])
+                    capOR.append(temp[1])
         else:
             print("Error")
             AND = [100, 5]
@@ -139,38 +151,60 @@ class MyProblem(Problem):
         tiempoAND = [12, 10, 150]
         tiempoOR = [10, 125, 10]
 
-        # Se obtiene la cantidad de compuertas AND
-        cantAND = AND[0]
-        capAND = AND[1]
+        totAND = np.array(totAND)
+        capAND = np.array(capAND)
 
-        # Se obtiene la cantidad de compuertas OR
-        cantOR = OR[0]
-        capOR = OR[1]
+        totOR = np.array(totOR)
+        capOR = np.array(capOR)
 
         # Se obtiene la cantidad de integrados a utilizar
-        cantInteAND = cantAND // inte[x[0] - 1]
-        if cantAND % inte[x[0] - 1] > 0: # Se verifica si hay un residuo en la división
-            cantInteAND += 1
+        totInteOR = [0, 0, 0]
+        totInteAND = [0, 0, 0]
+        if len(totAND) > 1:
+            for i in range(len(totAND)):
+                totInteAND[x[i]-1] += totAND[i]
+            totInteOR[x[9]-1] += totOR[0]
+        else:
+            for i in range(len(totOR)):
+                totInteOR[x[i]-1] += totOR[i]
+            totInteAND[x[9]-1] += totAND[0]
 
-        cantInteOR = cantOR // inte[x[1] - 1]
-        if cantOR % inte[x[1] - 1] > 0: # Se verifica si hay un residuo en la división
-            cantInteOR += 1
+        totORinte = []
+        totANDinte = []
+        for i in range(len(totInteOR)):
+            temp = totInteOR[i] // inte[i]
+            if totInteOR[i] % inte[i] > 0:
+                temp += 1
+            totORinte.append(temp)
+            temp = totInteAND[i] // inte[i]
+            if totInteAND[i] % inte[i] > 0:
+                temp += 1
+            totANDinte.append(temp)
 
         # Función objetiva: coste
-        f1 = cantInteAND * cost[x[0]-1] + cantInteOR * cost[x[1] - 1] + 2 * 1
+        f1 = 2
+        for i in range(len(cost)):
+            f1 += cost[i] * (totANDinte[i] + totORinte[i])
 
         # Función objetiva: tiempo de establecimiento
-        f2 = 2 * 10 + capAND * tiempoAND[x[0] - 1] + capOR * tiempoOR[x[1] - 1]
+        whereAND = np.where(capAND == np.amax(capAND))
+        maxAND = np.amax(capAND)
+        whereOR = np.where(capOR == np.amax(capOR))
+        maxOR = np.amax(capOR)
+        if len(capAND) > 1:
+            f2 = 2 * 10 + maxAND * tiempoAND[x[whereAND[0][0]] - 1] + maxOR * tiempoOR[x[8] - 1]
+        else:
+            f2 = 2 * 10 + maxAND * tiempoAND[x[8] - 1] + maxOR * tiempoOR[x[whereOR[0][0]] - 1]
 
         # Función objetiva: energía emitida
-        f3 = cantInteAND * cost[x[0]-1] + cantInteOR * cost[x[1] - 1] + 2 * 1
+        f3 = f1
 
         out["F"] = np.column_stack([f1, f2, f3])
 
 problem = MyProblem()
 
 # Obtener Algoritmo, se utiliza NSGA-II
-algorithm = NSGA2(pop_size=10,
+algorithm = NSGA2(pop_size=3000,
                   sampling=get_sampling("int_random"),
                   crossover=get_crossover("int_sbx", prob=1.0, eta=3.0),
                   mutation=get_mutation("int_pm", eta=3.0),
@@ -178,7 +212,7 @@ algorithm = NSGA2(pop_size=10,
                   eliminate_duplicates=True)
 
 # Se definen 50 iteraciones en la evolución
-termination = get_termination("n_gen", 50)
+termination = get_termination("n_gen", 1000)
 
 # Se realiza la evolución
 res = minimize(problem,
